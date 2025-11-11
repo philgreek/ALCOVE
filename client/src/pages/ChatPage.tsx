@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { io, Socket } from 'socket.io-client';
 import { Chat, Message, User } from '../types';
 import { getChats, getMessages, createMessage, searchUsers, createChat } from '../services/apiService';
 import Sidebar from '../components/Sidebar';
@@ -19,7 +20,11 @@ const ChatPage: React.FC = () => {
   const [searchResults, setSearchResults] = useState<User[]>([]);
   const [isSearching, setIsSearching] = useState(false);
   const searchTimeoutRef = useRef<number | null>(null);
+  
+  const socketRef = useRef<Socket | null>(null);
+  const notificationAudioRef = useRef<HTMLAudioElement | null>(null);
 
+  // Fetch initial chat data
   useEffect(() => {
     const fetchInitialData = async () => {
       setIsLoading(true);
@@ -36,6 +41,49 @@ const ChatPage: React.FC = () => {
     };
     fetchInitialData();
   }, [logout]);
+
+  // WebSocket connection effect
+  useEffect(() => {
+    if (!user) return;
+
+    if (!notificationAudioRef.current) {
+        notificationAudioRef.current = new Audio('/notification.mp3');
+    }
+
+    const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
+    const socket = io(SERVER_URL, {
+        query: { userId: user.id }
+    });
+    socketRef.current = socket;
+
+    socket.on('newMessage', (newMessage: Message) => {
+        notificationAudioRef.current?.play().catch(e => console.error("Error playing sound:", e));
+
+        // Update the list of chats
+        setChats(prevChats => {
+            const chatToUpdate = prevChats.find(c => c.id === newMessage.chatId);
+            if (!chatToUpdate) return prevChats;
+            
+            const updatedChat = {
+                ...chatToUpdate,
+                lastMessage: { ...newMessage, timestamp: new Date(newMessage.timestamp) }
+            };
+            
+            const otherChats = prevChats.filter(c => c.id !== newMessage.chatId);
+            return [updatedChat, ...otherChats];
+        });
+
+        // If the message is for the currently selected chat, add it to the messages list
+        if (newMessage.chatId === selectedChatId) {
+            setMessages(prevMessages => [...prevMessages, { ...newMessage, timestamp: new Date(newMessage.timestamp) }]);
+        }
+    });
+
+    return () => {
+        socket.disconnect();
+    };
+  }, [user, selectedChatId]);
+
 
   // Debounced search effect
   useEffect(() => {
@@ -60,7 +108,7 @@ const ChatPage: React.FC = () => {
       } finally {
         setIsSearching(false);
       }
-    }, 300); // 300ms debounce delay
+    }, 300);
 
     return () => {
       if (searchTimeoutRef.current) {
@@ -69,6 +117,7 @@ const ChatPage: React.FC = () => {
     };
   }, [searchQuery]);
 
+  // Fetch messages for selected chat
   useEffect(() => {
     if (selectedChatId) {
       const fetchMessages = async () => {
@@ -134,8 +183,17 @@ const ChatPage: React.FC = () => {
   const handleStartChat = useCallback(async (partnerId: string) => {
     try {
       const newChat = await createChat(partnerId);
-      if (!chats.find(c => c.id === newChat.id)) {
-        setChats(prev => [newChat, ...prev]);
+      // Avoid adding duplicate chat if it already exists
+      if (!chats.some(c => c.id === newChat.id)) {
+        // Since the new chat comes populated from the server, parse the timestamp
+        const populatedChat = {
+          ...newChat,
+          lastMessage: {
+            ...newChat.lastMessage,
+            timestamp: newChat.lastMessage.timestamp ? new Date(newChat.lastMessage.timestamp) : new Date()
+          }
+        }
+        setChats(prev => [populatedChat, ...prev]);
       }
       handleSelectChat(newChat.id);
     } catch (err: any) {
@@ -174,7 +232,7 @@ const ChatPage: React.FC = () => {
             messages={messages}
             onSendMessage={handleSendMessage}
             isLoading={isLoading && messages.length === 0}
-            isPartnerTyping={false}
+            isPartnerTyping={false} // This feature is for a future update
             onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
             currentUserId={currentUserId}
           />

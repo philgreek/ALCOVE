@@ -4,8 +4,18 @@ const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const fs = require('fs');
 const path = require('path');
+const http = require('http');
+const { Server } = require("socket.io");
 
 const app = express();
+const server = http.createServer(app);
+const io = new Server(server, {
+  cors: {
+    origin: "*", // В production-среде лучше указать URL вашего фронтенда
+    methods: ["GET", "POST"]
+  }
+});
+
 const port = process.env.PORT || 3001;
 const JWT_SECRET = process.env.JWT_SECRET || 'your_default_secret_key';
 
@@ -33,6 +43,28 @@ const readDB = () => {
 const writeDB = (data) => {
     fs.writeFileSync(dbPath, JSON.stringify(data, null, 2));
 };
+
+// --- SOCKET.IO ---
+const userSockets = new Map(); // Map<userId, socketId>
+
+io.on('connection', (socket) => {
+  const userId = socket.handshake.query.userId;
+  if (userId) {
+    userSockets.set(userId, socket.id);
+    console.log(`User connected: ${userId} with socket ${socket.id}`);
+  }
+
+  socket.on('disconnect', () => {
+    for (let [key, value] of userSockets.entries()) {
+      if (value === socket.id) {
+        userSockets.delete(key);
+        break;
+      }
+    }
+    console.log(`A user disconnected. Sockets online: ${userSockets.size}`);
+  });
+});
+
 
 // --- AUTH MIDDLEWARE ---
 const authenticateToken = (req, res, next) => {
@@ -70,6 +102,19 @@ app.post('/api/auth/register', async (req, res) => {
             isOnline: true,
         };
         db.users.push(newUser);
+        
+        // Find Alice and create a chat
+        const alice = db.users.find(u => u.name === 'Alice');
+        if (alice && alice.id !== newUser.id) {
+          const newChat = {
+            id: `chat-${Date.now()}`,
+            userIds: [newUser.id, alice.id],
+            unreadCount: 0,
+          };
+          db.chats.push(newChat);
+          db.messages[newChat.id] = [];
+        }
+
         writeDB(db);
 
         const token = jwt.sign({ id: newUser.id, name: newUser.name }, JWT_SECRET, { expiresIn: '1h' });
@@ -104,7 +149,6 @@ app.post('/api/auth/login', async (req, res) => {
 
 // --- API Endpoints (Protected) ---
 
-// Search for users
 app.get('/api/users/search', authenticateToken, (req, res) => {
     const { q } = req.query;
     if (!q) {
@@ -119,7 +163,6 @@ app.get('/api/users/search', authenticateToken, (req, res) => {
     res.json(searchResults);
 });
 
-// Create a new chat
 app.post('/api/chats', authenticateToken, (req, res) => {
     const { partnerId } = req.body;
     const currentUserId = req.user.id;
@@ -132,14 +175,6 @@ app.post('/api/chats', authenticateToken, (req, res) => {
     }
 
     const db = readDB();
-    const partner = db.users.find(u => u.id === partnerId);
-    if (!partner) {
-        return res.status(404).json({ error: 'Partner user not found' });
-    }
-
-    const existingChat = db.chats.find(chat => 
-        chat.userIds.includes(currentUserId) && chat.userIds.includes(partnerId)
-    );
     
     const populateChat = (chat) => {
         const users = chat.userIds.map(userId => {
@@ -152,7 +187,11 @@ app.post('/api/chats', authenticateToken, (req, res) => {
         const messagesForChat = db.messages[chat.id] || [];
         const lastMessage = messagesForChat.length > 0 ? messagesForChat[messagesForChat.length - 1] : {};
         return {...chat, users, lastMessage};
-    }
+    };
+
+    const existingChat = db.chats.find(chat => 
+        chat.userIds.includes(currentUserId) && chat.userIds.includes(partnerId)
+    );
 
     if (existingChat) {
         return res.status(200).json(populateChat(existingChat));
@@ -178,9 +217,10 @@ app.get('/api/chats', authenticateToken, (req, res) => {
     const populatedChats = currentUserChats.map(chat => {
       const users = chat.userIds.map(userId => {
         const user = db.users.find(u => u.id === userId);
+        if(!user) return null;
         const { password, ...userWithoutPassword } = user;
         return userWithoutPassword;
-      });
+      }).filter(Boolean);
       const messagesForChat = db.messages[chat.id] || [];
       const lastMessage = messagesForChat.length > 0 ? messagesForChat[messagesForChat.length - 1] : {};
       return {...chat, users, lastMessage};
@@ -225,17 +265,25 @@ app.post('/api/messages', authenticateToken, (req, res) => {
         senderId,
     };
     
-    if (db.messages[chatId]) {
-        db.messages[chatId].push(newMessage);
-    } else {
-        db.messages[chatId] = [newMessage];
-    }
+    db.messages[chatId] = db.messages[chatId] || [];
+    db.messages[chatId].push(newMessage);
     
     writeDB(db);
+
+    // --- Real-time part ---
+    const recipientId = chat.userIds.find(id => id !== senderId);
+    if (recipientId) {
+        const recipientSocketId = userSockets.get(recipientId);
+        if (recipientSocketId) {
+            // Send the message to the recipient
+            io.to(recipientSocketId).emit('newMessage', { ...newMessage, chatId });
+        }
+    }
+    
     res.status(201).json(newMessage);
 });
 
-
-app.listen(port, () => {
+// Use server.listen instead of app.listen
+server.listen(port, () => {
     console.log(`Server listening on http://localhost:${port}`);
 });

@@ -1,6 +1,7 @@
 import { Chat, Message, User } from '../types';
 
-const API_BASE_URL = import.meta.env.VITE_API_URL || 'http://localhost:3001/api';
+const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
+const API_BASE_URL = `${SERVER_URL}/api`;
 
 const getAuthToken = () => {
     const user = localStorage.getItem('user');
@@ -8,23 +9,17 @@ const getAuthToken = () => {
 };
 
 async function handleResponse<T>(response: Response): Promise<T> {
-  // Сначала читаем тело ответа как текст, чтобы избежать ошибки "body stream already read"
   const bodyText = await response.text();
 
   if (!response.ok) {
     try {
-      // Пытаемся парсить текст как JSON, чтобы получить структурированную ошибку
       const errorJson = JSON.parse(bodyText);
       throw new Error(errorJson.error || `API request failed with status ${response.status}`);
     } catch (e) {
-      // Если тело ответа - не JSON (например, HTML-страница ошибки от Vercel),
-      // выбрасываем сам текст как ошибку.
       throw new Error(bodyText || `API request failed with status ${response.status}`);
     }
   }
 
-  // Если ответ успешный, парсим текст как JSON.
-  // Обрабатываем случай с пустым телом ответа (например, для статуса 204 No Content).
   return bodyText ? JSON.parse(bodyText) : null as T;
 }
 
