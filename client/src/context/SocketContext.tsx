@@ -11,7 +11,9 @@ export const SocketProvider: React.FC<{ children: ReactNode }> = ({ children }) 
 
   useEffect(() => {
     if (user && user.id) {
-      const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
+      // Используем прокси Vite в разработке и переменную окружения в продакшене
+      const SERVER_URL = import.meta.env.PROD ? import.meta.env.VITE_SERVER_URL : '/';
+      
       const newSocket = io(SERVER_URL, {
         query: { userId: user.id },
         transports: ['websocket']

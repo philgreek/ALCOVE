@@ -1,7 +1,10 @@
 import { Chat, Message, User } from '../types';
 
-const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
-const API_BASE_URL = `${SERVER_URL}/api`;
+// Используем прокси Vite в разработке и переменную окружения в продакшене
+const API_BASE_URL = import.meta.env.PROD 
+  ? `${import.meta.env.VITE_SERVER_URL}/api` 
+  : '/api';
+
 
 const getAuthToken = () => {
     const user = localStorage.getItem('user');
