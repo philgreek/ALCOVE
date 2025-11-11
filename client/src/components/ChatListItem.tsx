@@ -5,6 +5,7 @@ interface ChatListItemProps {
   chat: Chat;
   isSelected: boolean;
   onSelect: () => void;
+  currentUserId: string;
 }
 
 const formatTimestamp = (date: Date) => {
@@ -24,12 +25,12 @@ const formatTimestamp = (date: Date) => {
 }
 
 
-const ChatListItem: React.FC<ChatListItemProps> = ({ chat, isSelected, onSelect }) => {
-  const partner = chat.users.find(u => u.id !== 'user-0');
+const ChatListItem: React.FC<ChatListItemProps> = ({ chat, isSelected, onSelect, currentUserId }) => {
+  const partner = chat.users.find(u => u.id !== currentUserId);
 
   if (!partner) return null;
 
-  const lastMessageText = chat.lastMessage.text || '🎤 Voice message';
+  const lastMessageText = chat.lastMessage?.text || (chat.lastMessage?.audio ? '🎤 Voice message' : 'No messages yet');
 
   return (
     <li onClick={onSelect}>
@@ -41,9 +42,11 @@ const ChatListItem: React.FC<ChatListItemProps> = ({ chat, isSelected, onSelect 
         <div className="ml-4 flex-1 overflow-hidden">
           <div className="flex justify-between items-baseline">
             <p className={`font-bold ${isSelected ? 'text-on-secondary-container' : 'text-on-surface'}`}>{partner.name}</p>
-            <p className={`text-xs ${isSelected ? 'text-on-secondary-container/80' : 'text-on-surface/60'}`}>
-                {formatTimestamp(chat.lastMessage.timestamp)}
-            </p>
+            {chat.lastMessage?.timestamp && (
+                <p className={`text-xs ${isSelected ? 'text-on-secondary-container/80' : 'text-on-surface/60'}`}>
+                    {formatTimestamp(chat.lastMessage.timestamp)}
+                </p>
+            )}
           </div>
           <div className="flex justify-between items-start mt-1">
             <p className={`text-sm truncate pr-2 ${isSelected ? 'text-on-secondary-container/90' : 'text-on-surface/70'}`}>

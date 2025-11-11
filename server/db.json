@@ -1,0 +1,85 @@
+{
+  "users": [
+    {
+      "id": "user-0",
+      "name": "You",
+      "password": "$2b$10$fJ7i.n.5K3Gj.t.8/T.9A.Z2U/o.i.gH/n.J.e.Y/X.u.P.a.s.S",
+      "avatarUrl": "https://i.pravatar.cc/150?u=user-0",
+      "isOnline": true
+    },
+    {
+      "id": "user-1",
+      "name": "Alice",
+      "password": "$2b$10$eI5.j9i21kM.G3d6a4D7cO2w.X.r.Y.p.a.S.s.w.o.r.d.e.r",
+      "avatarUrl": "https://i.pravatar.cc/150?u=user-1",
+      "isOnline": true
+    },
+    {
+      "id": "user-2",
+      "name": "Bob",
+      "password": "$2b$10$eI5.j9i21kM.G3d6a4D7cO2w.X.r.Y.p.a.S.s.w.o.r.d.e.r",
+      "avatarUrl": "https://i.pravatar.cc/150?u=user-2",
+      "isOnline": false
+    },
+    {
+      "id": "user-3",
+      "name": "Charlie",
+      "password": "$2b$10$eI5.j9i21kM.G3d6a4D7cO2w.X.r.Y.p.a.S.s.w.o.r.d.e.r",
+      "avatarUrl": "https://i.pravatar.cc/150?u=user-3",
+      "isOnline": true
+    },
+    {
+      "id": "user-4",
+      "name": "Diana",
+      "password": "$2b$10$eI5.j9i21kM.G3d6a4D7cO2w.X.r.Y.p.a.S.s.w.o.r.d.e.r",
+      "avatarUrl": "https://i.pravatar.cc/150?u=user-4",
+      "isOnline": false
+    }
+  ],
+  "chats": [
+    {
+      "id": "chat-1",
+      "userIds": ["user-0", "user-1"],
+      "unreadCount": 2
+    },
+    {
+      "id": "chat-2",
+      "userIds": ["user-0", "user-2"],
+      "unreadCount": 0
+    },
+    {
+      "id": "chat-3",
+      "userIds": ["user-0", "user-3"],
+      "unreadCount": 1
+    },
+    {
+      "id": "chat-4",
+      "userIds": ["user-0", "user-4"],
+      "unreadCount": 0
+    }
+  ],
+  "messages": {
+    "chat-1": [
+      {
+        "id": "msg-1-1",
+        "text": "Hey, how is it going?",
+        "timestamp": "2024-05-21T10:10:00.000Z",
+        "senderId": "user-1"
+      },
+      {
+        "id": "msg-1-2",
+        "text": "Pretty good! Just working on a new React project. You?",
+        "timestamp": "2024-05-21T10:12:00.000Z",
+        "senderId": "user-0"
+      }
+    ],
+    "chat-2": [
+      {
+        "id": "msg-2-1",
+        "text": "Did you see the latest news?",
+        "timestamp": "2024-05-21T08:00:00.000Z",
+        "senderId": "user-2"
+      }
+    ]
+  }
+}

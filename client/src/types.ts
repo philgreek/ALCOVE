@@ -1,18 +1,9 @@
-// This is needed to fix TypeScript errors when accessing `import.meta.env`.
-// Vite exposes environment variables on this object.
-declare global {
-  interface ImportMeta {
-    readonly env: {
-      readonly VITE_API_URL?: string;
-    }
-  }
-}
-
 export interface User {
   id: string;
   name: string;
   avatarUrl: string;
-  isOnline: boolean;
+  isOnline?: boolean;
+  token?: string;
 }
 
 export interface Message {

@@ -11,7 +11,8 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage }) => {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const [recordingTime, setRecordingTime] = useState(0);
-  const timerIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  // FIX: setInterval in a browser environment returns a number, not NodeJS.Timeout.
+  const timerIntervalRef = useRef<number | null>(null);
 
 
   const startRecording = async () => {
@@ -19,7 +20,7 @@ const ChatInput: React.FC<ChatInputProps> = ({ onSendMessage }) => {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       setIsRecording(true);
       setRecordingTime(0);
-      timerIntervalRef.current = setInterval(() => {
+      timerIntervalRef.current = window.setInterval(() => {
         setRecordingTime(prev => prev + 1);
       }, 1000);
       

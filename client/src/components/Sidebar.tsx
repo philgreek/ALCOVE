@@ -9,9 +9,11 @@ interface SidebarProps {
   onSelectChat: (chatId: string) => void;
   isOpen: boolean;
   setIsOpen: (isOpen: boolean) => void;
+  currentUserId: string;
+  onLogout: () => void;
 }
 
-const Sidebar: React.FC<SidebarProps> = ({ chats, selectedChatId, onSelectChat, isOpen, setIsOpen }) => {
+const Sidebar: React.FC<SidebarProps> = ({ chats, selectedChatId, onSelectChat, isOpen, currentUserId, onLogout }) => {
   return (
     <aside className={`absolute md:relative z-20 md:z-auto h-full flex flex-col bg-surface-2 transition-transform duration-300 ease-in-out ${isOpen ? 'translate-x-0' : '-translate-x-full'} md:translate-x-0 w-full sm:w-80 lg:w-96 border-r border-surface-3`}>
       <header className="p-4 border-b border-surface-3 flex-shrink-0">
@@ -38,10 +40,14 @@ const Sidebar: React.FC<SidebarProps> = ({ chats, selectedChatId, onSelectChat, 
               chat={chat}
               isSelected={chat.id === selectedChatId}
               onSelect={() => onSelectChat(chat.id)}
+              currentUserId={currentUserId}
             />
           ))}
         </ul>
       </div>
+      <footer className="p-4 border-t border-surface-3">
+          <button onClick={onLogout} className="w-full text-left p-2 rounded-lg hover:bg-surface-3">Logout</button>
+      </footer>
     </aside>
   );
 };

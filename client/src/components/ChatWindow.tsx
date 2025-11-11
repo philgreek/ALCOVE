@@ -11,6 +11,7 @@ interface ChatWindowProps {
   isLoading: boolean;
   isPartnerTyping: boolean;
   onToggleSidebar: () => void;
+  currentUserId: string;
 }
 
 const TypingIndicator: React.FC = () => (
@@ -24,7 +25,7 @@ const TypingIndicator: React.FC = () => (
 );
 
 
-const ChatWindow: React.FC<ChatWindowProps> = ({ chatPartner, messages, onSendMessage, isLoading, isPartnerTyping, onToggleSidebar }) => {
+const ChatWindow: React.FC<ChatWindowProps> = ({ chatPartner, messages, onSendMessage, isLoading, isPartnerTyping, onToggleSidebar, currentUserId }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
 
   const scrollToBottom = () => {
@@ -64,7 +65,7 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ chatPartner, messages, onSendMe
         ) : (
           <div className="space-y-4">
             {messages.map(message => (
-              <MessageBubble key={message.id} message={message} isSender={message.senderId === 'user-0'} />
+              <MessageBubble key={message.id} message={message} isSender={message.senderId === currentUserId} />
             ))}
             {isPartnerTyping && (
                  <div className="flex justify-start">

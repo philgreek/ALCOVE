@@ -1,94 +1,168 @@
 const express = require('express');
 const cors = require('cors');
+const bcrypt = require('bcrypt');
+const jwt = require('jsonwebtoken');
+const fs = require('fs');
+const path = require('path');
+
 const app = express();
 const port = process.env.PORT || 3001;
+const JWT_SECRET = process.env.JWT_SECRET || 'your_default_secret_key';
 
-// Увеличиваем лимит, чтобы принимать аудиофайлы в base64
 app.use(cors());
 app.use(express.json({ limit: '10mb' }));
 
-// --- MOCK DATA (в будущем это будет заменено на базу данных) ---
+// --- DATABASE (File-based) ---
+const dbPath = path.join(__dirname, 'db.json');
 
-const users = {
-  'user-0': { id: 'user-0', name: 'You', avatarUrl: 'https://i.pravatar.cc/150?u=user-0', isOnline: true },
-  'user-1': { id: 'user-1', name: 'Alice', avatarUrl: 'https://i.pravatar.cc/150?u=user-1', isOnline: true },
-  'user-2': { id: 'user-2', name: 'Bob', avatarUrl: 'https://i.pravatar.cc/150?u=user-2', isOnline: false },
-  'user-3': { id: 'user-3', name: 'Charlie', avatarUrl: 'https://i.pravatar.cc/150?u=user-3', isOnline: true },
-  'user-4': { id: 'user-4', name: 'Diana', avatarUrl: 'https://i.pravatar.cc/150?u=user-4', isOnline: false },
+const readDB = () => {
+    if (!fs.existsSync(dbPath)) {
+        // Create initial DB if it doesn't exist
+        const initialData = {
+            users: [],
+            chats: [],
+            messages: {}
+        };
+        fs.writeFileSync(dbPath, JSON.stringify(initialData, null, 2));
+        return initialData;
+    }
+    const data = fs.readFileSync(dbPath);
+    return JSON.parse(data);
 };
 
-const messagesDB = {
-  'chat-1': [
-    { id: 'msg-1-1', text: 'Hey, how is it going?', timestamp: new Date(Date.now() - 1000 * 60 * 50), senderId: 'user-1' },
-    { id: 'msg-1-2', text: 'Pretty good! Just working on a new React project. You?', timestamp: new Date(Date.now() - 1000 * 60 * 48), senderId: 'user-0' },
-    { id: 'msg-1-3', text: 'Oh, nice! I am planning a trip for the weekend.', timestamp: new Date(Date.now() - 1000 * 60 * 45), senderId: 'user-1' },
-    { id: 'msg-1-4', text: 'Sounds fun! Where to?', timestamp: new Date(Date.now() - 1000 * 60 * 44), senderId: 'user-0' },
-  ],
-  'chat-2': [
-    { id: 'msg-2-1', text: 'Did you see the latest news about the framework updates?', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 3), senderId: 'user-2' },
-    { id: 'msg-2-2', text: 'Not yet, I was busy. Anything major?', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 2), senderId: 'user-0' },
-  ],
-  'chat-3': [
-    { id: 'msg-3-1', text: "Let's catch up tomorrow for lunch.", timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24 * 2), senderId: 'user-3' },
-  ],
-  'chat-4': [
-     { id: 'msg-4-1', text: 'Can you review my PR?', timestamp: new Date(Date.now() - 1000 * 60 * 60 * 24 * 5), senderId: 'user-4' },
-  ],
+const writeDB = (data) => {
+    fs.writeFileSync(dbPath, JSON.stringify(data, null, 2));
 };
 
-const chatsDB = [
-  { id: 'chat-1', users: [users['user-0'], users['user-1']], lastMessage: messagesDB['chat-1'][3], unreadCount: 2 },
-  { id: 'chat-2', users: [users['user-0'], users['user-2']], lastMessage: messagesDB['chat-2'][1], unreadCount: 0 },
-  { id: 'chat-3', users: [users['user-0'], users['user-3']], lastMessage: messagesDB['chat-3'][0], unreadCount: 1 },
-  { id: 'chat-4', users: [users['user-0'], users['user-4']], lastMessage: messagesDB['chat-4'][0], unreadCount: 0 },
-];
+// --- AUTH MIDDLEWARE ---
+const authenticateToken = (req, res, next) => {
+    const authHeader = req.headers['authorization'];
+    const token = authHeader && authHeader.split(' ')[1];
 
+    if (token == null) return res.sendStatus(401);
 
-// --- API Endpoints ---
+    jwt.verify(token, JWT_SECRET, (err, user) => {
+        if (err) return res.sendStatus(403);
+        req.user = user;
+        next();
+    });
+};
 
-app.get('/api/chats', (req, res) => {
-  const sortedChats = [...chatsDB].sort((a, b) => new Date(b.lastMessage.timestamp).getTime() - new Date(a.lastMessage.timestamp).getTime());
-  res.json(sortedChats);
+// --- AUTH ROUTES ---
+app.post('/api/auth/register', async (req, res) => {
+    try {
+        const { name, password } = req.body;
+        if (!name || !password) {
+            return res.status(400).json({ error: "Username and password are required" });
+        }
+
+        const db = readDB();
+        if (db.users.find(u => u.name === name)) {
+            return res.status(400).json({ error: "User already exists" });
+        }
+
+        const hashedPassword = await bcrypt.hash(password, 10);
+        const newUser = {
+            id: `user-${Date.now()}`,
+            name,
+            password: hashedPassword,
+            avatarUrl: `https://i.pravatar.cc/150?u=${name}`,
+            isOnline: true,
+        };
+        db.users.push(newUser);
+        writeDB(db);
+
+        const token = jwt.sign({ id: newUser.id, name: newUser.name }, JWT_SECRET, { expiresIn: '1h' });
+        res.status(201).json({ token, user: { id: newUser.id, name: newUser.name, avatarUrl: newUser.avatarUrl } });
+
+    } catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
 });
 
-app.get('/api/messages/:chatId', (req, res) => {
-  const { chatId } = req.params;
-  res.json(messagesDB[chatId] || []);
+app.post('/api/auth/login', async (req, res) => {
+    try {
+        const { name, password } = req.body;
+        const db = readDB();
+        const user = db.users.find(u => u.name === name);
+
+        if (user == null) {
+            return res.status(400).json({ error: 'Cannot find user' });
+        }
+
+        if (await bcrypt.compare(password, user.password)) {
+            const token = jwt.sign({ id: user.id, name: user.name }, JWT_SECRET, { expiresIn: '1h' });
+            res.json({ token, user: { id: user.id, name: user.name, avatarUrl: user.avatarUrl } });
+        } else {
+            res.status(400).json({ error: 'Not Allowed' });
+        }
+    } catch (error) {
+        res.status(500).json({ error: 'Internal server error' });
+    }
 });
 
-app.post('/api/messages', (req, res) => {
-  const { chatId, senderId, text, audio } = req.body;
-  
-  if (!chatId || (!text && !audio) || !senderId) {
-    return res.status(400).json({ error: 'Missing required fields' });
-  }
 
-  const newMessage = {
-    id: `msg-${Date.now()}`,
-    text: text || undefined,
-    audio: audio || undefined,
-    timestamp: new Date(),
-    senderId,
-  };
-  
-  // Имитация сохранения в базу данных
-  if (messagesDB[chatId]) {
-    messagesDB[chatId].push(newMessage);
-  } else {
-    messagesDB[chatId] = [newMessage];
-  }
+// --- API Endpoints (Protected) ---
+app.get('/api/chats', authenticateToken, (req, res) => {
+    const db = readDB();
+    const currentUserChats = db.chats.filter(chat => chat.userIds.includes(req.user.id));
+    
+    const populatedChats = currentUserChats.map(chat => {
+      const users = chat.userIds.map(userId => {
+        const user = db.users.find(u => u.id === userId);
+        return { id: user.id, name: user.name, avatarUrl: user.avatarUrl, isOnline: user.isOnline };
+      });
+      const lastMessage = db.messages[chat.id] ? db.messages[chat.id][db.messages[chat.id].length - 1] : {};
+      return {...chat, users, lastMessage};
+    });
 
-  const chat = chatsDB.find(c => c.id === chatId);
-  if (chat) {
-    chat.lastMessage = newMessage;
-  }
-  
-  // В реальном приложении здесь будет отправка сообщения по WebSocket
-  
-  res.status(201).json(newMessage);
+    const sortedChats = populatedChats.sort((a, b) => new Date(b.lastMessage.timestamp).getTime() - new Date(a.lastMessage.timestamp).getTime());
+    res.json(sortedChats);
+});
+
+app.get('/api/messages/:chatId', authenticateToken, (req, res) => {
+    const db = readDB();
+    const { chatId } = req.params;
+    const chat = db.chats.find(c => c.id === chatId);
+    if (!chat || !chat.userIds.includes(req.user.id)) {
+        return res.status(403).json({ error: "Access denied" });
+    }
+    res.json(db.messages[chatId] || []);
+});
+
+app.post('/api/messages', authenticateToken, (req, res) => {
+    const { chatId, text, audio } = req.body;
+    const senderId = req.user.id;
+
+    if (!chatId || (!text && !audio)) {
+        return res.status(400).json({ error: 'Missing required fields' });
+    }
+
+    const db = readDB();
+    const chat = db.chats.find(c => c.id === chatId);
+    if (!chat || !chat.userIds.includes(senderId)) {
+        return res.status(403).json({ error: "Access denied" });
+    }
+    
+    const newMessage = {
+        id: `msg-${Date.now()}`,
+        text: text || undefined,
+        audio: audio || undefined,
+        timestamp: new Date(),
+        senderId,
+    };
+    
+    if (db.messages[chatId]) {
+        db.messages[chatId].push(newMessage);
+    } else {
+        db.messages[chatId] = [newMessage];
+    }
+    
+    writeDB(db);
+    res.status(201).json(newMessage);
 });
 
 
 app.listen(port, () => {
-  console.log(`Server listening on http://localhost:${port}`);
+    console.log(`Server listening on http://localhost:${port}`);
 });
