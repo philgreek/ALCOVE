@@ -2,6 +2,7 @@
   "name": "React Messenger",
   "description": "A modern messenger application built with React and Tailwind CSS, inspired by Material Design 3. It features a responsive layout, a clean user interface for conversations, and simulates real-time messaging.",
   "requestFramePermissions": [
-    "microphone"
+    "microphone",
+    "camera"
   ]
 }

@@ -1,14 +1,17 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { io, Socket } from 'socket.io-client';
+// Исправлено: Добавлен импорт типа Chat для устранения ошибки компиляции.
 import { Chat, Message, User } from '../types';
 import { getChats, getMessages, createMessage, searchUsers, createChat } from '../services/apiService';
 import Sidebar from '../components/Sidebar';
 import ChatWindow from '../components/ChatWindow';
 import { MessageIcon, MenuIcon } from '../components/Icons';
 import { useAuth } from '../context/AuthContext';
+import { useSocket } from '../context/SocketContext';
 
 const ChatPage: React.FC = () => {
   const { user, logout } = useAuth();
+  const { socket } = useSocket();
+
   const [chats, setChats] = useState<Chat[]>([]);
   const [selectedChatId, setSelectedChatId] = useState<string | null>(null);
   const [messages, setMessages] = useState<Message[]>([]);
@@ -21,7 +24,6 @@ const ChatPage: React.FC = () => {
   const [isSearching, setIsSearching] = useState(false);
   const searchTimeoutRef = useRef<number | null>(null);
   
-  const socketRef = useRef<Socket | null>(null);
   const notificationAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // Fetch initial chat data
@@ -42,24 +44,17 @@ const ChatPage: React.FC = () => {
     fetchInitialData();
   }, [logout]);
 
-  // WebSocket connection effect
+  // WebSocket message listener effect
   useEffect(() => {
-    if (!user) return;
+    if (!socket) return;
 
     if (!notificationAudioRef.current) {
         notificationAudioRef.current = new Audio('/notification.mp3');
     }
 
-    const SERVER_URL = import.meta.env.VITE_SERVER_URL || 'http://localhost:3001';
-    const socket = io(SERVER_URL, {
-        query: { userId: user.id }
-    });
-    socketRef.current = socket;
-
-    socket.on('newMessage', (newMessage: Message) => {
+    const handleNewMessage = (newMessage: Message) => {
         notificationAudioRef.current?.play().catch(e => console.error("Error playing sound:", e));
 
-        // Update the list of chats
         setChats(prevChats => {
             const chatToUpdate = prevChats.find(c => c.id === newMessage.chatId);
             if (!chatToUpdate) return prevChats;
@@ -73,16 +68,17 @@ const ChatPage: React.FC = () => {
             return [updatedChat, ...otherChats];
         });
 
-        // If the message is for the currently selected chat, add it to the messages list
         if (newMessage.chatId === selectedChatId) {
             setMessages(prevMessages => [...prevMessages, { ...newMessage, timestamp: new Date(newMessage.timestamp) }]);
         }
-    });
+    };
+
+    socket.on('newMessage', handleNewMessage);
 
     return () => {
-        socket.disconnect();
+        socket.off('newMessage', handleNewMessage);
     };
-  }, [user, selectedChatId]);
+  }, [socket, selectedChatId]);
 
 
   // Debounced search effect
@@ -183,9 +179,7 @@ const ChatPage: React.FC = () => {
   const handleStartChat = useCallback(async (partnerId: string) => {
     try {
       const newChat = await createChat(partnerId);
-      // Avoid adding duplicate chat if it already exists
       if (!chats.some(c => c.id === newChat.id)) {
-        // Since the new chat comes populated from the server, parse the timestamp
         const populatedChat = {
           ...newChat,
           lastMessage: {

@@ -54,6 +54,38 @@ io.on('connection', (socket) => {
     console.log(`User connected: ${userId} with socket ${socket.id}`);
   }
 
+  // WebRTC Signaling
+  socket.on('call-user', (data) => {
+    const recipientSocket = userSockets.get(data.to);
+    if (recipientSocket) {
+      io.to(recipientSocket).emit('call-incoming', {
+        signal: data.signalData,
+        from: data.from,
+      });
+    }
+  });
+
+  socket.on('answer-call', (data) => {
+    const callerSocket = userSockets.get(data.to);
+    if (callerSocket) {
+      io.to(callerSocket).emit('call-accepted', data.signal);
+    }
+  });
+
+  socket.on('ice-candidate', (data) => {
+    const recipientSocket = userSockets.get(data.to);
+    if (recipientSocket) {
+      io.to(recipientSocket).emit('ice-candidate', data.candidate);
+    }
+  });
+  
+  socket.on('call-ended', (data) => {
+    const recipientSocket = userSockets.get(data.to);
+    if (recipientSocket) {
+      io.to(recipientSocket).emit('call-ended');
+    }
+  });
+
   socket.on('disconnect', () => {
     for (let [key, value] of userSockets.entries()) {
       if (value === socket.id) {

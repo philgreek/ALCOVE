@@ -3,6 +3,7 @@ import { User, Message } from '../types';
 import MessageBubble from './MessageBubble';
 import ChatInput from './ChatInput';
 import { PhoneIcon, VideoIcon, MoreIcon, MenuIcon } from './Icons';
+import { useWebRTC } from '../context/WebRTCContext';
 
 interface ChatWindowProps {
   chatPartner: User;
@@ -27,6 +28,7 @@ const TypingIndicator: React.FC = () => (
 
 const ChatWindow: React.FC<ChatWindowProps> = ({ chatPartner, messages, onSendMessage, isLoading, isPartnerTyping, onToggleSidebar, currentUserId }) => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
+  const { callUser } = useWebRTC();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -35,6 +37,10 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ chatPartner, messages, onSendMe
   useEffect(() => {
     scrollToBottom();
   }, [messages, isPartnerTyping]);
+
+  const handleCall = () => {
+    callUser(chatPartner.id, chatPartner.name);
+  };
 
   return (
     <div className="flex flex-col h-full bg-surface-1">
@@ -52,7 +58,9 @@ const ChatWindow: React.FC<ChatWindowProps> = ({ chatPartner, messages, onSendMe
         </div>
         <div className="ml-auto flex items-center gap-2">
             <button className="p-2 rounded-full hover:bg-surface-3 transition-colors"><PhoneIcon className="w-6 h-6"/></button>
-            <button className="p-2 rounded-full hover:bg-surface-3 transition-colors"><VideoIcon className="w-6 h-6"/></button>
+            <button onClick={handleCall} className="p-2 rounded-full hover:bg-surface-3 transition-colors text-primary hover:text-primary-dark">
+              <VideoIcon className="w-6 h-6"/>
+            </button>
             <button className="p-2 rounded-full hover:bg-surface-3 transition-colors"><MoreIcon className="w-6 h-6"/></button>
         </div>
       </header>
