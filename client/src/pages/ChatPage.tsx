@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import { Chat, Message } from '../types';
-import { getChats, getMessages, createMessage } from '../services/apiService';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { Chat, Message, User } from '../types';
+import { getChats, getMessages, createMessage, searchUsers, createChat } from '../services/apiService';
 import Sidebar from '../components/Sidebar';
 import ChatWindow from '../components/ChatWindow';
 import { MessageIcon, MenuIcon } from '../components/Icons';
@@ -15,6 +15,11 @@ const ChatPage: React.FC = () => {
   const [isSidebarOpen, setIsSidebarOpen] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
+  const [searchQuery, setSearchQuery] = useState('');
+  const [searchResults, setSearchResults] = useState<User[]>([]);
+  const [isSearching, setIsSearching] = useState(false);
+  const searchTimeoutRef = useRef<number | null>(null);
+
   useEffect(() => {
     const fetchInitialData = async () => {
       setIsLoading(true);
@@ -25,12 +30,44 @@ const ChatPage: React.FC = () => {
       } catch (err: any) {
         console.error("Failed to fetch chats:", err);
         setError(`Failed to load chats. Is the backend server running? (${err.message})`);
-        if (err.message.includes('403')) logout();
+        if (err.message.includes('403') || err.message.includes('401')) logout();
       }
       setIsLoading(false);
     };
     fetchInitialData();
   }, [logout]);
+
+  // Debounced search effect
+  useEffect(() => {
+    if (searchQuery.trim() === '') {
+      setSearchResults([]);
+      setIsSearching(false);
+      return;
+    }
+
+    if (searchTimeoutRef.current) {
+      clearTimeout(searchTimeoutRef.current);
+    }
+
+    setIsSearching(true);
+    searchTimeoutRef.current = window.setTimeout(async () => {
+      try {
+        const results = await searchUsers(searchQuery);
+        setSearchResults(results);
+      } catch (err) {
+        console.error("Failed to search users:", err);
+        setError("Failed to search for users.");
+      } finally {
+        setIsSearching(false);
+      }
+    }, 300); // 300ms debounce delay
+
+    return () => {
+      if (searchTimeoutRef.current) {
+        clearTimeout(searchTimeoutRef.current);
+      }
+    };
+  }, [searchQuery]);
 
   useEffect(() => {
     if (selectedChatId) {
@@ -71,17 +108,9 @@ const ChatPage: React.FC = () => {
       setMessages(prev => prev.map(m => m.id === tempId ? {...savedMessage, timestamp: new Date(savedMessage.timestamp)} : m));
 
       setChats(prevChats => {
-        const chatIndex = prevChats.findIndex(c => c.id === selectedChatId);
-        if (chatIndex === -1) return prevChats;
-        
-        // FIX: Incorrectly creating a synthetic text message for audio.
-        // The lastMessage object should be updated with the savedMessage directly.
-        // The ChatListItem component already has the logic to display it correctly.
-        const updatedChat = {
-            ...prevChats[chatIndex],
-            lastMessage: {...savedMessage, timestamp: new Date(savedMessage.timestamp)}
-        };
-
+        const updatedChat = prevChats.find(c => c.id === selectedChatId);
+        if (!updatedChat) return prevChats;
+        updatedChat.lastMessage = {...savedMessage, timestamp: new Date(savedMessage.timestamp)};
         const otherChats = prevChats.filter(c => c.id !== selectedChatId);
         return [updatedChat, ...otherChats];
       });
@@ -95,16 +124,31 @@ const ChatPage: React.FC = () => {
 
   const handleSelectChat = (chatId: string) => {
     setSelectedChatId(chatId);
+    setSearchQuery('');
+    setSearchResults([]);
     if (window.innerWidth < 768) {
       setIsSidebarOpen(false);
     }
   };
+  
+  const handleStartChat = useCallback(async (partnerId: string) => {
+    try {
+      const newChat = await createChat(partnerId);
+      if (!chats.find(c => c.id === newChat.id)) {
+        setChats(prev => [newChat, ...prev]);
+      }
+      handleSelectChat(newChat.id);
+    } catch (err: any) {
+      console.error("Failed to start chat:", err);
+      setError(`Failed to start chat: ${err.message}`);
+    }
+  }, [chats]);
 
   const currentUserId = user?.id;
   const selectedChat = chats.find(c => c.id === selectedChatId);
   const chatPartner = selectedChat?.users.find(u => u.id !== currentUserId);
 
-  if (!currentUserId) return <div>Loading...</div>;
+  if (!currentUserId) return <div className="flex items-center justify-center h-screen w-screen">Loading user...</div>;
 
   return (
     <div className="h-screen w-screen bg-surface-1 text-on-surface flex overflow-hidden">
@@ -116,6 +160,11 @@ const ChatPage: React.FC = () => {
         setIsOpen={setIsSidebarOpen}
         currentUserId={currentUserId}
         onLogout={logout}
+        searchQuery={searchQuery}
+        onSearchChange={setSearchQuery}
+        searchResults={searchResults}
+        isSearching={isSearching}
+        onStartChat={handleStartChat}
       />
       
       <main className="flex-1 flex flex-col transition-all duration-300">
@@ -124,7 +173,7 @@ const ChatPage: React.FC = () => {
             chatPartner={chatPartner}
             messages={messages}
             onSendMessage={handleSendMessage}
-            isLoading={isLoading}
+            isLoading={isLoading && messages.length === 0}
             isPartnerTyping={false}
             onToggleSidebar={() => setIsSidebarOpen(!isSidebarOpen)}
             currentUserId={currentUserId}
@@ -140,9 +189,9 @@ const ChatPage: React.FC = () => {
            ) : (
             <div className="text-center">
               <MessageIcon className="w-24 h-24 text-surface-3 mx-auto" />
-              <h2 className="mt-4 text-2xl font-semibold">Welcome to React Messenger</h2>
-              <p className="mt-2 text-on-surface/70">Select a conversation to start chatting</p>
-               <button onClick={() => setIsSidebarOpen(true)} className="mt-4 md-hidden inline-flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-full">
+              <h2 className="mt-4 text-2xl font-semibold">Welcome, {user?.name}!</h2>
+              <p className="mt-2 text-on-surface/70">Select a conversation or find a user to start chatting.</p>
+               <button onClick={() => setIsSidebarOpen(true)} className="mt-4 md:hidden inline-flex items-center gap-2 bg-primary text-on-primary px-4 py-2 rounded-full">
                 <MenuIcon className="w-5 h-5" />
                 Open Chats
               </button>

@@ -103,6 +103,74 @@ app.post('/api/auth/login', async (req, res) => {
 
 
 // --- API Endpoints (Protected) ---
+
+// Search for users
+app.get('/api/users/search', authenticateToken, (req, res) => {
+    const { q } = req.query;
+    if (!q) {
+        return res.json([]);
+    }
+
+    const db = readDB();
+    const searchResults = db.users.filter(user => 
+        user.name.toLowerCase().includes(q.toLowerCase()) && user.id !== req.user.id
+    ).map(({ id, name, avatarUrl, isOnline }) => ({ id, name, avatarUrl, isOnline }));
+
+    res.json(searchResults);
+});
+
+// Create a new chat
+app.post('/api/chats', authenticateToken, (req, res) => {
+    const { partnerId } = req.body;
+    const currentUserId = req.user.id;
+
+    if (!partnerId) {
+        return res.status(400).json({ error: 'Partner ID is required' });
+    }
+    if (partnerId === currentUserId) {
+        return res.status(400).json({ error: 'Cannot create a chat with yourself' });
+    }
+
+    const db = readDB();
+    const partner = db.users.find(u => u.id === partnerId);
+    if (!partner) {
+        return res.status(404).json({ error: 'Partner user not found' });
+    }
+
+    const existingChat = db.chats.find(chat => 
+        chat.userIds.includes(currentUserId) && chat.userIds.includes(partnerId)
+    );
+    
+    const populateChat = (chat) => {
+        const users = chat.userIds.map(userId => {
+            const user = db.users.find(u => u.id === userId);
+            if (!user) return null;
+            const { password, ...userWithoutPassword } = user;
+            return userWithoutPassword;
+        }).filter(Boolean);
+
+        const messagesForChat = db.messages[chat.id] || [];
+        const lastMessage = messagesForChat.length > 0 ? messagesForChat[messagesForChat.length - 1] : {};
+        return {...chat, users, lastMessage};
+    }
+
+    if (existingChat) {
+        return res.status(200).json(populateChat(existingChat));
+    }
+
+    const newChat = {
+        id: `chat-${Date.now()}`,
+        userIds: [currentUserId, partnerId],
+        unreadCount: 0
+    };
+
+    db.chats.push(newChat);
+    db.messages[newChat.id] = [];
+    writeDB(db);
+    
+    res.status(201).json(populateChat(newChat));
+});
+
 app.get('/api/chats', authenticateToken, (req, res) => {
     const db = readDB();
     const currentUserChats = db.chats.filter(chat => chat.userIds.includes(req.user.id));
@@ -110,13 +178,18 @@ app.get('/api/chats', authenticateToken, (req, res) => {
     const populatedChats = currentUserChats.map(chat => {
       const users = chat.userIds.map(userId => {
         const user = db.users.find(u => u.id === userId);
-        return { id: user.id, name: user.name, avatarUrl: user.avatarUrl, isOnline: user.isOnline };
+        const { password, ...userWithoutPassword } = user;
+        return userWithoutPassword;
       });
-      const lastMessage = db.messages[chat.id] ? db.messages[chat.id][db.messages[chat.id].length - 1] : {};
+      const messagesForChat = db.messages[chat.id] || [];
+      const lastMessage = messagesForChat.length > 0 ? messagesForChat[messagesForChat.length - 1] : {};
       return {...chat, users, lastMessage};
     });
 
-    const sortedChats = populatedChats.sort((a, b) => new Date(b.lastMessage.timestamp).getTime() - new Date(a.lastMessage.timestamp).getTime());
+    const sortedChats = populatedChats.sort((a, b) => 
+      (b.lastMessage.timestamp ? new Date(b.lastMessage.timestamp).getTime() : 0) - 
+      (a.lastMessage.timestamp ? new Date(a.lastMessage.timestamp).getTime() : 0)
+    );
     res.json(sortedChats);
 });
 
